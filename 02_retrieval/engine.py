@@ -45,6 +45,11 @@ if TYPE_CHECKING:  # pragma: no cover
 # retrieval for `both` mode) without colliding when new raw units arrive.
 DERIVED_BASE = 1 << 22
 
+# Bounded batch size for extend/extend_derived: keeps the warm-embed material-
+# ization and dense-pair accumulation at ~256 docs (~24MB) instead of the whole
+# user corpus (~90KB/doc peak on full rebuilds — 336MB for a 3600-doc user).
+_EMBED_BATCH = 256
+
 ATOMIC_RETURN_MODES = ("atomic_only", "atomic_index_raw_return")  # derived-only search surface
 
 
@@ -211,10 +216,18 @@ class SearchIndex:
         only search modes index postings from atomic docs alone; the raw units
         stay canonical in the store and are never deleted)."""
         embed_many = getattr(embedder, "embed_many", None)
-        if embedder is not None and with_postings and embed_many is not None:
-            # EXP-EMB-V4: batch-warm an API backend's cache; the per-unit
-            # `embed` below then hits cache and posting order is unchanged.
-            embed_many([_index_text(unit) for unit in units])
+        # Process in bounded batches: materializing every embed_many result +
+        # every dense pair at once peaked ~90KB/doc on full rebuilds (336MB for
+        # a 3600-doc user). Per-batch, the peak is ~256 docs ≈ 24MB.
+        for batch_start in range(0, len(units), _EMBED_BATCH):
+            batch = units[batch_start : batch_start + _EMBED_BATCH]
+            if embedder is not None and with_postings and embed_many is not None:
+                # EXP-EMB-V4: batch-warm an API backend's cache; the per-unit
+                # `embed` below then hits cache and posting order is unchanged.
+                embed_many([_index_text(unit) for unit in batch])
+            self._extend_batch(batch, embedder, with_postings)
+
+    def _extend_batch(self, units: list[MemoryUnit], embedder: Any, with_postings: bool) -> None:
         dense_pairs: list[tuple[int, dict[int, float]]] = []
         for unit in units:
             if unit.user_id != self.ui.user_id:
@@ -291,8 +304,13 @@ class SearchIndex:
         `both`-mode same-pool semantics). Derived docs inherit temporal anchors
         from their own text + the source unit's timestamp."""
         embed_many = getattr(embedder, "embed_many", None)
-        if embedder is not None and embed_many is not None:
-            embed_many([doc.text for doc in docs])
+        for batch_start in range(0, len(docs), _EMBED_BATCH):
+            batch = docs[batch_start : batch_start + _EMBED_BATCH]
+            if embedder is not None and embed_many is not None:
+                embed_many([doc.text for doc in batch])
+            self._extend_derived_batch(batch, embedder)
+
+    def _extend_derived_batch(self, docs: list[DerivedDoc], embedder: Any) -> None:
         dense_pairs: list[tuple[int, dict[int, float]]] = []
         for doc in docs:
             idx = DERIVED_BASE + len(self.derived_docs)

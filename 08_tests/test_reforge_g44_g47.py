@@ -54,6 +54,14 @@ import _bootstrap  # noqa: E402,F401
 EVIDENCE_COMMIT = "a072910"  # judge report evidence baseline (R1 append-only anchor)
 AUTHORITY_COMMIT = "0371cfb"  # historical location of the restored workorder (R3)
 
+# Provenance gates need private-tree artifacts (the live ledger, eval probe
+# scripts, workorder history reachable via `git show`). In the public export
+# those artifacts are deliberately absent — skip rather than red.
+_HAS_LEDGER = (REPO / "06_results" / "ledger" / "ledger.jsonl").exists()
+_HAS_PROBE = (REPO / "06_results" / "g47_consistency_probe.py").exists()
+_HAS_WORKORDERS = (REPO / "07_workorders" / "WORKORDER_AML_V1_ATOMIC_R1.md").exists()
+_HAS_MIGRATION = (REPO / "04_bench" / "migrate_cache_endpoint.py").exists() and (REPO / "04_bench" / "data" / "locomo10.json").exists()
+
 
 # ---------------------------------------------------------------------------
 # G44 — official coordinate forces the official endpoint
@@ -297,6 +305,125 @@ def test_g45_legacy_db_fingerprint_bytes_unchanged(tmp_path):
     v2.close()
 
 
+@pytest.mark.skipif(not _HAS_MIGRATION, reason="migration CLI + dataset not exported")
+def test_g45_migrate_endpoint_cli_attributes_and_refuses(tmp_path, monkeypatch):
+    import migrate_cache_endpoint
+    from benchlib.locomo_loader import load_locomo
+
+    dataset = str(REPO / "04_bench" / "data" / "locomo10.json")
+    convs = load_locomo(dataset)
+    turns = [t for c in convs for sess in c.sessions for t in sess][:2]
+    pv, model, gran = prompt_version("fine"), "gpt-4o-mini-2024-07-18", "fine"
+    frozen = tmp_path / "v1.jsonl"
+    with open(frozen, "w", encoding="utf-8") as fh:
+        for i, t in enumerate(turns):
+            key = _v1_key(pv, model, gran, content_sha256(t.speaker, t.text))
+            fh.write(
+                json.dumps(
+                    {
+                        "key": key,
+                        "facts": [f"fact {i}"],
+                        "model_id": model,
+                        "prompt_version": pv,
+                        "granularity": gran,
+                        "created_at": "2026-09-06T00:00:00+00:00",
+                    }
+                )
+                + "\n"
+            )
+        # one entry that matches no dataset message → cannot be attributed
+        fh.write(
+            json.dumps(
+                {
+                    "key": _v1_key(pv, model, gran, "deadbeef" * 8),
+                    "facts": ["orphan"],
+                    "model_id": model,
+                    "prompt_version": pv,
+                    "granularity": gran,
+                    "created_at": "2026-09-06T00:00:00+00:00",
+                }
+            )
+            + "\n"
+        )
+
+    out = tmp_path / "v2.jsonl"
+    base = [
+        "migrate",
+        "--from-frozen",
+        str(frozen),
+        "--dataset",
+        dataset,
+        "--endpoint",
+        "api.relay.test",
+        "--out",
+        str(out),
+    ]
+
+    # refusal: an unattributable entry blocks the whole migration, nothing written
+    monkeypatch.setattr(sys, "argv", base)
+    assert migrate_cache_endpoint.main() == 1
+    assert not out.exists()
+
+    # allow-partial migrates only the matched subset, under endpoint-bound keys
+    monkeypatch.setattr(sys, "argv", [*base, "--allow-partial"])
+    assert migrate_cache_endpoint.main() == 0
+    rows = [json.loads(line) for line in out.read_text().splitlines() if line.strip()]
+    assert len(rows) == 2
+    assert all(r["endpoint_identity"] == "api.relay.test" for r in rows)
+    expected = {
+        cache_key(pv, model, gran, content_sha256(t.speaker, t.text), "api.relay.test")
+        for t in turns
+    }
+    assert {r["key"] for r in rows} == expected
+    # and a thawed v2 db resolves them deterministically (zero calls by construction)
+    cache = ExtractionCache(tmp_path / "v2db" / "extraction_cache.sqlite3")
+    assert cache.import_jsonl(out) == 2
+    for t in turns:
+        k = cache_key(pv, model, gran, content_sha256(t.speaker, t.text), "api.relay.test")
+        assert cache.get(k) is not None
+    cache.close()
+
+
+# ---------------------------------------------------------------------------
+# G46 — LLM provenance in the ledger
+
+
+def _mini_bench_record(tmp_path, atomic_overrides):
+    from aml_api import create_app
+    from benchlib.runner import run_benchmark
+    from fastapi.testclient import TestClient
+
+    sys.path.insert(0, str(REPO / "08_tests"))
+    from test_atomic import _mini_conversation
+
+    cfg = load_config(
+        overrides={
+            "storage": {"db_path": str(tmp_path / "b.db")},
+            "ops_log": {"enabled": True, "dir": str(tmp_path / "ops")},
+            "dense": {"backend": "hashed_ngram"},
+            "retrievers": {"exact": True},
+            "surface": {"NEIGHBOR_POLICY": "off"},
+            "adapter": {
+                "tier": "NO_LLM",
+                "budget_usd_cap": 30.0,
+                "spend_state_path": str(tmp_path / "spend" / "spend_state.json"),
+            },
+            "extraction_cache": {"dir": str(tmp_path / "cache")},
+            "atomic": {"mode": "both", "extractor": "rule", **atomic_overrides},
+        }
+    )
+    app = create_app(cfg)
+    with TestClient(app) as client:
+        return run_benchmark(
+            client,
+            [_mini_conversation()],
+            cfg,
+            run_id="g46",
+            results_root=tmp_path / "results",
+            label="g46",
+        )
+
+
 def test_g46_no_llm_off_row_has_stable_none_semantics(tmp_path):
     record = _mini_bench_record(tmp_path, {"mode": "off"})
     assert record["LLM_ENDPOINT"] == "none"
@@ -339,6 +466,7 @@ def test_g46_provenance_relation_accounting():
     assert audit_ledger_key_hygiene([legacy, ok_relay]) == []
 
 
+@pytest.mark.skipif(not _HAS_LEDGER, reason="private-tree provenance artifact not exported")
 def test_g46_historical_ledger_rows_unchanged_append_only():
     ledger = REPO / "06_results" / "ledger" / "ledger.jsonl"
     evidence = subprocess.run(
@@ -350,6 +478,7 @@ def test_g46_historical_ledger_rows_unchanged_append_only():
     assert current[: len(evidence)] == evidence  # append-only: history byte-identical
 
 
+@pytest.mark.skipif(not _HAS_LEDGER, reason="private-tree provenance artifact not exported")
 def test_g46_ledger_check_cli_accepts_current_ledger():
     proc = subprocess.run(
         [sys.executable, str(REPO / "04_bench" / "ledger_check.py")],
@@ -363,6 +492,7 @@ def test_g46_ledger_check_cli_accepts_current_ledger():
 # G47 — probe block semantics
 
 
+@pytest.mark.skipif(not _HAS_PROBE, reason="private-tree provenance artifact not exported")
 def test_g47_probe_blocked_without_key(tmp_path, monkeypatch):
     monkeypatch.delenv("AML_OFFICIAL_MODEL_API_KEY", raising=False)
     out = tmp_path / "probe.json"
@@ -402,6 +532,7 @@ def test_g47_probe_blocked_without_key(tmp_path, monkeypatch):
 # R3 — authority restoration stays byte-identical
 
 
+@pytest.mark.skipif(not _HAS_WORKORDERS, reason="private-tree provenance artifact not exported")
 def test_r3_authority_workorder_byte_identity():
     restored = REPO / "07_workorders" / "WORKORDER_AML_V1_ATOMIC_R1.md"
     source = subprocess.run(

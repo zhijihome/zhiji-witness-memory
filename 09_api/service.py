@@ -30,7 +30,10 @@ from aml_store.model import speaker_label
 
 # Small bounded LRU: a user's packed index (BM25 postings + dense matrix +
 # anchors) can reach tens of MB on a large corpus; 8G hosts must not keep 64.
-_INDEX_CACHE_LIMIT = 8
+# ~18MB/user steady-state (3600 docs @ matrix) → 32 indexes ≈ 580MB, safe on
+# the 8G eval host; an 8-entry cap would thrash when a harness interleaves
+# >8 user_ids (every search pays a full ~5s rebuild).
+_INDEX_CACHE_LIMIT = 32
 
 
 class MemoryService:

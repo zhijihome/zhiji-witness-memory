@@ -9,6 +9,8 @@ Hermetic by construction: everything here runs on the hashed_ngram backend
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from aml_config import load_config
 from aml_config.config import ConfigError
@@ -247,6 +249,10 @@ def test_g34_audit_ledger_counts():
     assert audit["non_strict_rows"]["value_mismatch"] == [5]
 
 
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parent.parent / "06_results" / "ledger" / "ledger.jsonl").exists(),
+    reason="private-tree provenance artifact not exported",
+)
 def test_g34_ledger_check_cli_on_real_ledger():
     """The real 25-row V0 ledger must account as 22 strict + 3 legacy no-key."""
     import subprocess
