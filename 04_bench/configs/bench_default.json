@@ -1,0 +1,13 @@
+{
+  "_comment": "LOCAL benchmark default config: identical to service defaults; exists so runs are explicitly pinned and diffable. Override anything with --set dotted.path=value.",
+  "surface": {
+    "RETURN_SIZE": "top_k",
+    "ORDERING_POLICY": "relevance_desc",
+    "NEIGHBOR_POLICY": "window:1"
+  },
+  "retrievers": {
+    "exact": false,
+    "bm25": true,
+    "dense": true
+  }
+}

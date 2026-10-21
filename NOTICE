@@ -1,0 +1,27 @@
+NOTICE
+======
+
+ZVEM — Zhiji Versioned Evidence Memory (candidate A1-DS)
+Copyright (c) 2026 the repository owner.
+
+This product includes software developed by the submission author.
+
+Third-party components (see ATTRIBUTION.md for the full inventory):
+
+- FastAPI, Starlette, uvicorn, pydantic, httpx — MIT/BSD licensed.
+- sentence-transformers, transformers, tokenizers, huggingface-hub — Apache-2.0.
+- torch — BSD-3-Clause (CPU build).
+- numpy, scikit-learn, scipy, narwhals — BSD/BSD-3/MIT.
+
+Machine-learning models referenced at build/runtime:
+
+- sentence-transformers/all-MiniLM-L6-v2 — Apache-2.0.
+- cross-encoder/ms-marco-MiniLM-L-6-v2 — Apache-2.0.
+- Alibaba Cloud DashScope text-embedding-v4 — remote API under Alibaba
+  Cloud service terms; no weights are redistributed.
+
+Benchmark data (LOCOMO-style, CC BY-NC 4.0) is fetched at development time
+for local evaluation only and is not distributed with this repository.
+
+No component has been modified. No code under copyleft licences
+(GPL/AGPL/LGPL) is included in this distribution.

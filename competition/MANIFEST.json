@@ -1,0 +1,31 @@
+{
+  "cache_namespace": "g45:b8319c8969d978e4",
+  "candidate_id": "A1-DS",
+  "code_canonical_is_ancestor": true,
+  "code_canonical_sha": "66f76cca45574d2184c91c0ad68796447b41b6b0",
+  "competition_config_hash": "sha256:b88075dad086750d4fdb9e0227ea3892eb0e84de19853031ddb08d4cd96f357f",
+  "competition_config_path": "10_config/competition.a1ds.json",
+  "competition_mode": true,
+  "config_fingerprint": "fbabe24e9113f9b0ce50119557f39e5c2560f93274791a9180e4585ee63967fe",
+  "configured_model": "gpt-4o-mini",
+  "dataset_contract_version": "UNKNOWN",
+  "dependency_lock_hash": "sha256:8cc0390f68a69fa56766709bfeef7f378da261a3dc61ac15e82e7ced9ce44205",
+  "docker_digest_if_available": "sha256:dbd7e8857f61cf1d6d692c714de78eb84ef4982897540c553baac3c5b698fa16",
+  "endpoint_identity": "api.openai.com",
+  "environment_summary": {
+    "host": "aliyun-ecs-4c8g",
+    "platform": "linux/amd64",
+    "python": "3.14-slim"
+  },
+  "generated_at": "2026-10-21T11:43:15+00:00",
+  "git_dirty": false,
+  "git_sha": "95cef0f2d9bcd34fc87efbed0127c1c136ee832f",
+  "official_rule_snapshot_id": "AML_CYCLE2_RULE_FREEZE_R1_20260907",
+  "prompt_version": "atomic-extract-rule-v1-fine",
+  "requested_model": "gpt-4o-mini",
+  "seed_if_any": 0,
+  "submission_class": "academic",
+  "top_k": 100,
+  "track": "textual",
+  "upstream_reported_model": "UNKNOWN_NOT_OBSERVED"
+}

@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "zhiji-aml"
+version = "0.1.0"
+description = "Zhiji Versioned Evidence Memory (ZVEM) — Agent Memory Leaderboard entry, V0 foundation"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [{ name = "Zhiji AML Team" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.30",
+    "pydantic>=2.7",
+    "sentence-transformers>=6.0",  # default dense backend (V0.5); local inference
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "httpx>=0.27",
+    "ruff>=0.5",
+]
+
+[tool.setuptools]
+# Layered layout: source lives in numbered layer directories (the layer map the
+# workorder and audits refer to), exposed as importable packages via explicit
+# package-dir remapping. Keep this mapping in sync with _bootstrap.py.
+package-dir = { aml_store = "01_store", aml_retrieval = "02_retrieval", aml_adapter = "03_adapter", aml_atomic = "11_atomic", aml_governance = "12_governance", aml_api = "09_api", aml_config = "10_config" }
+packages = ["aml_store", "aml_retrieval", "aml_adapter", "aml_atomic", "aml_governance", "aml_api", "aml_config"]
+
+[tool.setuptools.package-data]
+aml_config = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["08_tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = ["04_bench/data"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+# Bench/test scripts legitimately use更长行与打印
+"08_tests/*" = ["E501"]
+"04_bench/*" = ["E501"]

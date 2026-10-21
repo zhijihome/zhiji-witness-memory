@@ -1,0 +1,16 @@
+services:
+  aml-v0:
+    build:
+      context: ..
+      dockerfile: 05_docker/Dockerfile
+    image: zhiji-aml:v0
+    environment:
+      AML_HOST: 0.0.0.0
+    ports:
+      - "8093:8093"
+    volumes:
+      - aml-results:/app/06_results
+    restart: unless-stopped
+
+volumes:
+  aml-results:

@@ -1,0 +1,102 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8093
+  },
+  "storage": {
+    "db_path": "06_results/aml.db",
+    "journal_mode": "WAL",
+    "synchronous": "FULL"
+  },
+  "surface": {
+    "RETURN_SIZE": "top_k",
+    "ORDERING_POLICY": "relevance_desc",
+    "NEIGHBOR_POLICY": "window:1"
+  },
+  "retrievers": {
+    "exact": false,
+    "bm25": true,
+    "dense": true
+  },
+  "exact": {
+    "min_coverage": 0.25
+  },
+  "bm25": {
+    "k1": 1.5,
+    "b": 0.75
+  },
+  "dense": {
+    "backend": "sentence_transformers",
+    "device": "auto",
+    "sentence_transformers_revision": "1110a243fdf4706b3f48f1d95db1a4f5529b4d41",
+    "dim": 65536,
+    "char_ngrams": [
+      3,
+      4,
+      5
+    ],
+    "char_weight": 0.4,
+    "word_weight": 1.0,
+    "use_bigrams": true,
+    "sentence_transformers_model": "sentence-transformers/all-MiniLM-L6-v2",
+    "min_score": 0.05
+  },
+  "fusion": {
+    "method": "norm_sum",
+    "rrf_k": 60,
+    "norm": "minmax",
+    "weights": {
+      "exact": 1.0,
+      "bm25": 1.0,
+      "dense": 1.0
+    }
+  },
+  "neighbor": {
+    "seed_top": 25,
+    "decay": 0.5
+  },
+  "temporal": {
+    "extract_anchors": true,
+    "boost_delta": 0.01
+  },
+  "atomic": {
+    "mode": "off",
+    "extractor": "rule",
+    "granularity": "coarse",
+    "dedup_policy": "off",
+    "family_agg": "max",
+    "family_support_beta": 0.5,
+    "max_per_message": 8,
+    "min_char_len": 8,
+    "llm_concurrency": 8,
+    "llm_max_tokens": 500
+  },
+  "extraction_cache": {
+    "dir": "06_results/atomic_cache"
+  },
+  "search": {
+    "max_top_k": 1000,
+    "include_options_in_query": false,
+    "date_prefix": false,
+    "speaker_prefix": false
+  },
+  "ops_log": {
+    "enabled": true,
+    "dir": "06_results/ops"
+  },
+  "adapter": {
+    "tier": "NO_LLM",
+    "official_model_id": "gpt-4o-mini",
+    "official_base_url": "https://api.openai.com/v1",
+    "official_api_key_env": "AML_OFFICIAL_MODEL_API_KEY",
+    "coordinate": "LOCAL",
+    "price_per_1m_input_usd": 0.15,
+    "price_per_1m_output_usd": 0.6,
+    "request_timeout_s": 60,
+    "budget_usd_cap": 30.0,
+    "spend_state_path": "06_results/spend/spend_state.json"
+  },
+  "text": {
+    "stemming": true
+  }
+}
