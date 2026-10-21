@@ -51,7 +51,7 @@ from aml_atomic.extractors import RULE_VERSION, prompt_version  # noqa: E402
 
 # Frozen provenance (control tower, workorder AML-CYCLE2-PACKAGING-R1 §1):
 CODE_CANONICAL_SHA = "66f76cca45574d2184c91c0ad68796447b41b6b0"
-DEFAULT_RULE_SNAPSHOT_ID = "AML_CYCLE2_RULE_FREEZE_R1_20260907"
+DEFAULT_RULE_SNAPSHOT_ID = "AML_CYCLE2_RULE_FREEZE_R2_20260921"
 
 # §12 secret hygiene — pattern-based scan over the serialized manifest.
 # Deliberately narrow to credential SHAPES: the manifest legitimately carries

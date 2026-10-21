@@ -10,7 +10,7 @@ Everything needed to run the exact submitted configuration.
 | `AML_EMBEDDING_API_KEY` | yes (dashscope backend) | DashScope API key for `text-embedding-v4` |
 | `AML_HOST` | container only | `0.0.0.0` inside Docker |
 | `AML_PORT` | optional | default 8093 |
-| `AML_API_KEY` | recommended | token the service enforces; clients may send it as `Authorization: Bearer`, `X-Api-Key`, or `token` header |
+| `AML_API_KEY` | recommended | token the service enforces; clients may send it as `Authorization: Token` (AML apply-form default), `Authorization: Bearer`, `X-Api-Key`, or `token` header |
 
 ## 2. Boot
 
@@ -55,3 +55,20 @@ python3 smoke.py --base-url http://127.0.0.1:8093
 - Bad input → HTTP 422 with schema details; never a silent accept.
 - Any generative-LLM call attempt → none exists in this configuration
   (structural NO_LLM).
+
+## 6. Eval-data deletion (Cycle-2 rule: within 30 days post-run)
+
+All eval data lives in two files under the app root — `06_results/aml.db`
+(raw units + derived docs + journal) and `06_results/embedding_cache/
+dashscope.sqlite` (content-keyed embedding cache) — plus their WAL/SHM
+sidecars. The image mounts no volumes, so removing the container destroys
+everything; for an in-place, evidenced wipe while the service stays up:
+
+```bash
+docker exec zvem python -m competition.purge_eval_data            # live wipe
+docker exec zvem python -m competition.purge_eval_data --dry-run  # preview only
+# or the nuclear option, if the instance is being retired anyway:
+docker rm -f zvem   # writable layer gone => all eval data gone
+```
+
+A purge run should be logged (timestamp + output) as the deletion evidence.

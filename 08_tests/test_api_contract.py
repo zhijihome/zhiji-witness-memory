@@ -225,6 +225,12 @@ def test_g19_auth_401_when_configured(tmp_config, monkeypatch):
         )
         assert r.status_code == 200
         r = c.post(
+            "/add",
+            json={"request_id": "a2", "messages": [{"role": "r", "content": "c"}], "user_id": "u", "session_id": "s"},
+            headers={"Authorization": "Token sekrit"},
+        )
+        assert r.status_code == 200  # AML apply-form default scheme
+        r = c.post(
             "/search", json={"query": "c", "user_id": "u", "top_k": 5}, headers={"X-Api-Key": "sekrit"}
         )
         assert r.status_code == 200

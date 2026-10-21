@@ -24,6 +24,7 @@ from aml_atomic import AtomicPipeline
 from aml_config.config import AMLConfig
 from aml_retrieval import DerivedDoc, PackedItem, RetrievalEngine, SearchIndex, SearchOutcome
 from aml_store import AddOutcome, AddPayload, AtomicUnitRecord, CompetitionMemoryStore
+from aml_store.model import speaker_label
 
 _INDEX_CACHE_LIMIT = 64
 
@@ -153,8 +154,9 @@ class MemoryService:
             if date_on or speaker_on:
                 def _render(it: PackedItem) -> PackedItem:
                     text = it.content
-                    if speaker_on and it.role:
-                        text = f"{it.role}: {text}"
+                    label = speaker_label(it.role)
+                    if speaker_on and label:
+                        text = f"{label}: {text}"
                     if date_on and it.ts_ms is not None:
                         text = f"[{datetime.fromtimestamp(it.ts_ms / 1000.0, tz=UTC).strftime('%Y-%m-%d')}] {text}"
                     return replace(it, content=text) if text != it.content else it

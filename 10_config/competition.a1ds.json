@@ -11,7 +11,7 @@
     "add_async_202_allowed": false,
     "search_calls_per_question": 1,
     "user_isolation": "exact_user_id",
-    "official_rule_snapshot_id": "AML_CYCLE2_RULE_FREEZE_R1_20260907",
+    "official_rule_snapshot_id": "AML_CYCLE2_RULE_FREEZE_R2_20260921",
     "candidate_id": "A1-DS"
   },
   "surface": {

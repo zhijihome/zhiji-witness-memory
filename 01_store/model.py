@@ -30,6 +30,24 @@ def dedupe_key(user_id: str, session_id: str, request_id: str, msg_index: int, r
     ).hexdigest()
 
 
+GENERIC_CHAT_ROLES = frozenset(
+    {"user", "assistant", "system", "tool", "function", "developer"}
+)
+
+
+def speaker_label(role: str | None) -> str | None:
+    """Speaker label carried by a raw role, or None for generic chat roles.
+
+    The official contract fixes role to "user"/"assistant" — a generic value is
+    not a participant identity, so every surface (display prefix, derived fact
+    text, index text) treats it as "no speaker" rather than emitting the role
+    itself as a label."""
+    if not role:
+        return None
+    label = role.strip()
+    return None if label.lower() in GENERIC_CHAT_ROLES else label
+
+
 def iso_z(ts_ms: int | None, fallback_now: datetime | None = None) -> str:
     """UTC ISO-8601 (second precision, 'Z' suffix) — fixed width, sortable."""
     if ts_ms is not None:

@@ -26,6 +26,8 @@ from array import array
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
+from aml_store.model import speaker_label
+
 from .tokenize import STOPWORDS, content_tokens, tokenize
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -361,10 +363,12 @@ class DenseRetriever:
         }
 
 
-def embed_content_for_index(embedder: EmbeddingBackend, role: str, content: str) -> dict[int, float]:
-    """Embedding used when indexing a unit (role included: speaker identity is
-    strong retrieval signal in two-participant conversations)."""
-    return embedder.embed(f"{role}: {content}")
+def embed_content_for_index(embedder: EmbeddingBackend, role: str | None, content: str) -> dict[int, float]:
+    """Embedding used when indexing a unit (speaker label included when the
+    role carries one: identity is strong retrieval signal in two-participant
+    conversations; generic chat roles contribute nothing)."""
+    label = speaker_label(role)
+    return embedder.embed(f"{label}: {content}" if label else content)
 
 
 def query_feature_count(text: str) -> int:  # small helper used by tests

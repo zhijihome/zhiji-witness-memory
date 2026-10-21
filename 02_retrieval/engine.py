@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from aml_config.config import ConfigError
-from aml_store.model import MemoryUnit
+from aml_store.model import MemoryUnit, speaker_label
 from aml_store.store import UserIndex
 
 from .bm25 import BM25Retriever
@@ -44,6 +44,13 @@ if TYPE_CHECKING:  # pragma: no cover
 DERIVED_BASE = 1 << 22
 
 ATOMIC_RETURN_MODES = ("atomic_only", "atomic_index_raw_return")  # derived-only search surface
+
+
+def _index_text(unit: MemoryUnit) -> str:
+    """Raw-unit index text: "speaker: content" when the role carries a real
+    participant name, bare content under generic chat roles."""
+    label = speaker_label(unit.role)
+    return f"{label}: {unit.content}" if label else unit.content
 
 
 @dataclass(frozen=True)
@@ -195,7 +202,7 @@ class SearchIndex:
         if embedder is not None and with_postings and embed_many is not None:
             # EXP-EMB-V4: batch-warm an API backend's cache; the per-unit
             # `embed` below then hits cache and posting order is unchanged.
-            embed_many([f"{unit.role}: {unit.content}" for unit in units])
+            embed_many([_index_text(unit) for unit in units])
         for unit in units:
             if unit.user_id != self.ui.user_id:
                 raise ValueError("cross-user extend blocked")
@@ -209,10 +216,11 @@ class SearchIndex:
             if not with_postings or idx < self._processed:
                 continue  # postings already built for this unit
 
-            # BM25 sees "role: content": the speaker is a first-class lexical
-            # signal in two-participant conversations (dense embeds the same text).
+            # BM25 sees "speaker: content" when the role carries a real
+            # participant name — a first-class lexical signal in
+            # two-participant conversations (dense embeds the same text).
             tf: dict[str, int] = {}
-            for t in content_tokens(f"{unit.role}: {unit.content}", self.stemming):
+            for t in content_tokens(_index_text(unit), self.stemming):
                 tf[t] = tf.get(t, 0) + 1
             for t, f in tf.items():
                 self.bm25_postings.setdefault(t, []).append((idx, f))

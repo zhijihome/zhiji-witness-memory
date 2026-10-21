@@ -106,7 +106,10 @@ def create_app(config: AMLConfig | None = None, service: MemoryService | None = 
         if not api_key:
             return None
         header = request.headers.get("authorization", "")
-        bearer = header[7:].strip() if header.lower().startswith("bearer ") else ""
+        scheme, _, cred = header.partition(" ")
+        # The application form offers "Authorization: Token" as the default
+        # scheme — accept it alongside Bearer so either platform choice works.
+        bearer = cred.strip() if scheme.lower() in {"bearer", "token"} else ""
         x_key = request.headers.get("x-api-key", "")
         token = request.headers.get("token", "")
         if api_key not in {bearer, x_key, token}:
