@@ -65,8 +65,8 @@ sidecars. The image mounts no volumes, so removing the container destroys
 everything; for an in-place, evidenced wipe while the service stays up:
 
 ```bash
-docker exec zvem python -m competition.purge_eval_data            # live wipe
-docker exec zvem python -m competition.purge_eval_data --dry-run  # preview only
+docker exec zvem python /app/competition/purge_eval_data.py            # live wipe
+docker exec zvem python /app/competition/purge_eval_data.py --dry-run  # preview only
 # or the nuclear option, if the instance is being retired anyway:
 docker rm -f zvem   # writable layer gone => all eval data gone
 ```

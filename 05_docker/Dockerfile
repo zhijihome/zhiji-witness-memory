@@ -46,6 +46,9 @@ COPY 12_governance ./12_governance
 COPY 04_bench ./04_bench
 COPY 05_docker ./05_docker
 COPY 08_tests ./08_tests
+# competition/ ships the frozen manifest + the 30-day eval-data purge so the
+# deployed artifact itself carries the deletion tool the rules require.
+COPY competition ./competition
 COPY conftest.py _bootstrap.py smoke.py ./
 RUN pip install --no-cache-dir --no-deps .
 

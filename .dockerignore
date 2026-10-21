@@ -1,0 +1,13 @@
+.git
+.venv
+04_bench/data
+06_results/runs
+06_results/ops
+06_results/*.jsonl
+06_results/*.db*
+__pycache__
+.pytest_cache
+.ruff_cache
+._*
+.DS_Store
+competition/MANIFEST.json

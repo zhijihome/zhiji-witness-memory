@@ -13,7 +13,8 @@ in-container (or checkout-local) equivalent for when the service must stay up
 or the deletion must be evidenced without killing the deployment.
 
 Usage:
-    python -m competition.purge_eval_data [--root /app] [--dry-run]
+    python competition/purge_eval_data.py [--root /app] [--dry-run]
+    # in the Docker image: python /app/competition/purge_eval_data.py
 """
 
 from __future__ import annotations
