@@ -195,3 +195,87 @@ def test_min_score_config_validation():
         bad.write_text(json.dumps(base))
         with pytest.raises((ConfigError, Exception)):
             load_config(path=str(bad))
+
+
+# --- r8 audit follow-ups (AUDIT-VERDICT-R3 leftovers) -------------------------
+
+
+def test_search_options_non_string_never_422(client_factory):
+    """MCQ options are accepted-but-ignored: numeric / mixed / scalar options
+    must not 422 the whole Search (no-retry class → question gets no memory)."""
+    with client_factory() as c:
+        c.post("/add", json={"request_id": "r", "user_id": "u", "session_id": "s",
+                             "messages": [{"role": "user", "content": "I was born in 1990 in Lyon"}]})
+        for opts in ([1990, 1991], [1990.5, None, True], "A. only", 7, ["A. 1990", "B. 1991"]):
+            resp = c.post("/search", json={"query": "where was I born", "user_id": "u", "top_k": 10, "options": opts})
+            assert resp.status_code == 200, (opts, resp.text)
+            assert any("1990" in i["content"] for i in resp.json()["data"])
+
+
+def test_null_content_degrades_to_dropped_not_422(client_factory):
+    """content:null in one message must not 422 the chunk; the null message is
+    dropped like empty content, its siblings are stored and searchable."""
+    with client_factory() as c:
+        resp = c.post("/add", json={"request_id": "r", "user_id": "u", "session_id": "s",
+                                    "messages": [{"role": "user", "content": None},
+                                                 {"role": "assistant", "content": "the boat is named Marlin"}]})
+        assert resp.status_code == 200, resp.text
+        data = c.post("/search", json={"query": "boat name", "user_id": "u", "top_k": 10}).json()["data"]
+        assert data and all(i["content"].strip() for i in data)
+        assert any("Marlin" in i["content"] for i in data)
+
+
+def test_batched_embed_vectors_reused_not_refetched():
+    """Rebuild speed-up: each text is embedded exactly once (the batched call's
+    vectors are used directly), and the packed matrix is identical to the
+    per-item path."""
+    import numpy as np
+    from aml_retrieval.engine import SearchIndex
+    from aml_store.model import MemoryUnit
+    from aml_store.store import UserIndex
+
+    class Counting(_TinyDenseEmbedder):
+        def __init__(self) -> None:
+            super().__init__()
+            self.single = 0
+
+        def embed(self, text):
+            self.single += 1
+            return super().embed(text)
+
+        def embed_many(self, texts):
+            return [_TinyDenseEmbedder.embed(self, t) for t in texts]
+
+    class NoBatch(_TinyDenseEmbedder):
+        embed_many = None  # forces the per-item fallback path
+
+    units = [MemoryUnit(id=f"u{i}", user_id="u", session_id="s", request_id="r", msg_index=i,
+                        role="user", content=f"text number {i}", ts_ms=None, created_at="",
+                        arrival_seq=i + 1, session_seq=i, content_sha256="") for i in range(600)]
+    a = SearchIndex(UserIndex(user_id="u"), temporal_enabled=False)
+    emb = Counting()
+    a.extend(units, emb)
+    assert emb.single == 0 and emb.calls == len(units)  # one batched embedding per text, no re-read
+    b = SearchIndex(UserIndex(user_id="u"), temporal_enabled=False)
+    b.extend(units, NoBatch())
+    assert np.array_equal(a.dense_matrix, b.dense_matrix) and a.dense_rows == b.dense_rows
+
+
+def test_manifest_image_pins_read_from_dockerfile():
+    """Manifest image pins are parsed from the Dockerfile (single source), both
+    on the default path and when runtime facts are injected."""
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(root / "competition"))
+    import generate_manifest as gm
+
+    pins = gm.dockerfile_pins()
+    text = (root / "05_docker" / "Dockerfile").read_text()
+    assert pins["base_image_digest"].split("@")[1] in text and pins["base_image_digest"] != "UNKNOWN"
+    assert pins["ce_rerank_revision"] in text and pins["ce_rerank_revision"] != "UNKNOWN"
+    cfg = root / "10_config" / "competition.a1ds.json"
+    m = gm.build_manifest(cfg, environment_summary={"runtime": "x", "ce_rerank_revision": "stale"})
+    assert m["environment_summary"]["ce_rerank_revision"] == pins["ce_rerank_revision"]
+    assert m["environment_summary"]["runtime"] == "x"

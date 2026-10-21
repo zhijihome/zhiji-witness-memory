@@ -221,15 +221,23 @@ class SearchIndex:
         # a 3600-doc user). Per-batch, the peak is ~256 docs ≈ 24MB.
         for batch_start in range(0, len(units), _EMBED_BATCH):
             batch = units[batch_start : batch_start + _EMBED_BATCH]
+            vecs = None
             if embedder is not None and with_postings and embed_many is not None:
-                # EXP-EMB-V4: batch-warm an API backend's cache; the per-unit
-                # `embed` below then hits cache and posting order is unchanged.
-                embed_many([_index_text(unit) for unit in batch])
-            self._extend_batch(batch, embedder, with_postings)
+                # EXP-EMB-V4: one batched call per chunk; its vectors are used
+                # directly (embed(t) == embed_many([t])[0]), so the per-unit
+                # path never re-reads the cache. Posting order is unchanged.
+                vecs = embed_many([_index_text(unit) for unit in batch])
+            self._extend_batch(batch, embedder, with_postings, vecs)
 
-    def _extend_batch(self, units: list[MemoryUnit], embedder: Any, with_postings: bool) -> None:
+    def _extend_batch(
+        self,
+        units: list[MemoryUnit],
+        embedder: Any,
+        with_postings: bool,
+        vecs: list[dict[int, float]] | None = None,
+    ) -> None:
         dense_pairs: list[tuple[int, dict[int, float]]] = []
-        for unit in units:
+        for pos, unit in enumerate(units):
             if unit.user_id != self.ui.user_id:
                 raise ValueError("cross-user extend blocked")
             already_present = unit.id in self.ui.by_id
@@ -254,7 +262,7 @@ class SearchIndex:
             self.total_len += sum(tf.values())
 
             if embedder is not None:
-                vec = embed_content_for_index(embedder, unit.role, unit.content)
+                vec = vecs[pos] if vecs is not None else embed_content_for_index(embedder, unit.role, unit.content)
                 dense_pairs.append((idx, vec))
 
             if self.temporal_enabled:
@@ -292,9 +300,10 @@ class SearchIndex:
             return
         rows = np.zeros((len(pairs), dim), dtype=np.float32)
         for r, (_, vec) in enumerate(pairs):
-            for b, v in vec.items():
-                if 0 <= b < dim:
-                    rows[r, b] = v
+            keys = np.fromiter(vec.keys(), dtype=np.int64, count=len(vec))
+            vals = np.fromiter(vec.values(), dtype=np.float32, count=len(vec))
+            ok = (keys >= 0) & (keys < dim)
+            rows[r, keys[ok]] = vals[ok]
         self.dense_matrix = rows if self.dense_matrix is None else np.vstack((self.dense_matrix, rows))
         self.dense_rows.extend(idx for idx, _ in pairs)
 
@@ -306,13 +315,16 @@ class SearchIndex:
         embed_many = getattr(embedder, "embed_many", None)
         for batch_start in range(0, len(docs), _EMBED_BATCH):
             batch = docs[batch_start : batch_start + _EMBED_BATCH]
+            vecs = None
             if embedder is not None and embed_many is not None:
-                embed_many([doc.text for doc in batch])
-            self._extend_derived_batch(batch, embedder)
+                vecs = embed_many([doc.text for doc in batch])
+            self._extend_derived_batch(batch, embedder, vecs)
 
-    def _extend_derived_batch(self, docs: list[DerivedDoc], embedder: Any) -> None:
+    def _extend_derived_batch(
+        self, docs: list[DerivedDoc], embedder: Any, vecs: list[dict[int, float]] | None = None
+    ) -> None:
         dense_pairs: list[tuple[int, dict[int, float]]] = []
-        for doc in docs:
+        for pos, doc in enumerate(docs):
             idx = DERIVED_BASE + len(self.derived_docs)
             self.derived_docs.append(doc)
 
@@ -325,7 +337,8 @@ class SearchIndex:
             self.total_len += sum(tf.values())
 
             if embedder is not None:
-                vec = embedder.embed(doc.text)  # speaker already bound in the fact text
+                # speaker already bound in the fact text
+                vec = vecs[pos] if vecs is not None else embedder.embed(doc.text)
                 dense_pairs.append((idx, vec))
 
             if self.temporal_enabled:

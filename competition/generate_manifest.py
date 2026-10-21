@@ -77,6 +77,20 @@ def _git(args: list[str]) -> str:
     return out.stdout.strip()
 
 
+def dockerfile_pins(path: Path | None = None) -> dict[str, str]:
+    """Single source of truth for image pins: parse them from the Dockerfile
+    (base image digest + cross-encoder revision) instead of re-typing them
+    here, so the manifest can never drift from what the image actually pins.
+    A pin that cannot be found is reported as UNKNOWN, never fabricated."""
+    text = (path or REPO / "05_docker" / "Dockerfile").read_text(encoding="utf-8")
+    base = re.search(r"^FROM\s+(\S+?)(?::[^@\s]+)?@(sha256:[0-9a-f]{64})", text, re.M)
+    ce = re.search(r"snapshot_download\('cross-encoder/[^']+',\s*revision='([0-9a-f]{40})'\)", text)
+    return {
+        "base_image_digest": f"{base.group(1)}@{base.group(2)}" if base else "UNKNOWN",
+        "ce_rerank_revision": ce.group(1) if ce else "UNKNOWN",
+    }
+
+
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -152,8 +166,11 @@ def build_manifest(
         "docker_digest_if_available": docker_digest or "NOT_BUILT",
         "dataset_contract_version": "UNKNOWN",  # official snapshot does not version the dataset bundle
         "seed_if_any": 0,  # adapter body: temperature 0 + seed 0 on every official call
-        "environment_summary": environment_summary
-        or {
+        # image pins always come from the Dockerfile — also when runtime facts
+        # are injected via --environment-json — so they cannot be hand-typed.
+        "environment_summary": {**environment_summary, **dockerfile_pins()}
+        if environment_summary
+        else {
             # generator host = where this manifest was produced, NOT the
             # deploy runtime; container facts are injected via
             # --environment-json at freeze time.
@@ -171,8 +188,7 @@ def build_manifest(
                 else "REMOTE_UNPINNED"
             ),
             "dense_device_config": str(cfg.dense_cfg.get("device", "auto")),
-            "ce_rerank_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
-            "base_image_digest": "python@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a",
+            **dockerfile_pins(),
         },
         "generated_at": generated_at or datetime.now(tz=UTC).isoformat(timespec="seconds"),
         "official_rule_snapshot_id": str(

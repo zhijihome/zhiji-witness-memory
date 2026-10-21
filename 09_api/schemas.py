@@ -9,6 +9,7 @@ Field discipline:
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from typing import Annotated, Any
 
@@ -60,6 +61,21 @@ def _to_ts_ms(v: Any) -> Any:
     return None
 
 
+def _to_options(v: Any) -> Any:
+    """MCQ options are accepted-but-ignored; a non-string option (e.g. numeric
+    choices) must never 422 the whole Search. Scalars → one-item list, items →
+    str, nulls dropped, any other shape → None."""
+    if v is None:
+        return None
+    if not isinstance(v, (list, tuple)):
+        v = [v]
+    return [
+        x if isinstance(x, str) else json.dumps(x) if isinstance(x, (dict, list)) else str(x)
+        for x in v
+        if x is not None
+    ]
+
+
 SafeStr = Annotated[str, BeforeValidator(_to_str), Field(min_length=1)]
 
 
@@ -67,7 +83,8 @@ class MessageIn(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
     role: SafeStr
-    content: str = Field(min_length=0)  # empty content stores harmlessly; a missing field still 422s
+    # empty content is dropped at service.add; null degrades to empty; a missing field still 422s
+    content: Annotated[str, BeforeValidator(lambda v: "" if v is None else _to_str(v))] = Field(min_length=0)
     timestamp: int | None = Field(default=None)
 
     @field_validator("timestamp", mode="before")
@@ -96,7 +113,7 @@ class SearchRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
     query: SafeStr
-    options: list[str] | None = None
+    options: Annotated[list[str] | None, BeforeValidator(_to_options)] = None
     user_id: SafeStr
     top_k: int = Field(ge=1, le=100_000)
 
