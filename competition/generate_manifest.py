@@ -154,11 +154,25 @@ def build_manifest(
         "seed_if_any": 0,  # adapter body: temperature 0 + seed 0 on every official call
         "environment_summary": environment_summary
         or {
-            "python": platform.python_version(),
-            "platform": platform.platform(),
+            # generator host = where this manifest was produced, NOT the
+            # deploy runtime; container facts are injected via
+            # --environment-json at freeze time.
+            "generator_python": platform.python_version(),
+            "generator_platform": platform.platform(),
+            "runtime": "CONTAINER_UNDECLARED",
             "dense_backend": str(cfg.dense_cfg.get("backend", "")),
-            "dense_backend_revision": str(cfg.dense_cfg.get("sentence_transformers_revision", "")),
+            # dashscope is a remote model: revision cannot be observed or
+            # pinned from here — record the deployed model+endpoint honestly.
+            "dense_model": str(cfg.dense_cfg.get("api_model", "")) or "LOCAL",
+            "dense_endpoint": str(cfg.dense_cfg.get("api_base_url", "")) or "LOCAL",
+            "dense_backend_revision": (
+                str(cfg.dense_cfg.get("sentence_transformers_revision", ""))
+                if cfg.dense_cfg.get("backend") != "dashscope"
+                else "REMOTE_UNPINNED"
+            ),
             "dense_device_config": str(cfg.dense_cfg.get("device", "auto")),
+            "ce_rerank_revision": "233902d25c440f23af6f7d6e94d2946bac0bee0a",
+            "base_image_digest": "python@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a",
         },
         "generated_at": generated_at or datetime.now(tz=UTC).isoformat(timespec="seconds"),
         "official_rule_snapshot_id": str(

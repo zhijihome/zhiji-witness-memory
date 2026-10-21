@@ -9,24 +9,70 @@ Field discipline:
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from datetime import UTC, datetime
+from typing import Annotated, Any
+
+from pydantic import BaseModel, BeforeValidator, ConfigDict, Field, field_validator
+
+
+def _to_str(v: Any) -> Any:
+    """Coerce scalar ids/roles sent as numbers instead of strings — a single
+    int must not 422 the whole chunk."""
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return str(v)
+    return v
+
+
+def _to_ts_ms(v: Any) -> Any:
+    """Coerce tolerable timestamp shapes to epoch-ms; unparseable → None.
+
+    Accepted: int/float epoch-ms, numeric strings, ISO-8601 strings. Garbage
+    degrades to "no timestamp" (date prefix + time anchors off) rather than
+    rejecting the whole Add chunk."""
+    if v is None or isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        ts = int(v)
+        return ts if ts >= 0 else None
+    if isinstance(v, str):
+        s = v.strip()
+        try:
+            ts = int(float(s))
+            return ts if ts >= 0 else None
+        except ValueError:
+            pass
+        try:
+            return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
+        except ValueError:
+            return None
+    return None
+
+
+SafeStr = Annotated[str, BeforeValidator(_to_str), Field(min_length=1)]
 
 
 class MessageIn(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
-    role: str = Field(min_length=1)
-    content: str = Field(min_length=1)
-    timestamp: int | None = Field(default=None, ge=0)
+    role: SafeStr
+    content: str = Field(min_length=0)  # empty content stores harmlessly; a missing field still 422s
+    timestamp: int | None = Field(default=None)
+
+    @field_validator("timestamp", mode="before")
+    @classmethod
+    def _ts(cls, v: Any) -> Any:
+        return _to_ts_ms(v)
 
 
 class AddRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
-    request_id: str = Field(min_length=1)
+    request_id: SafeStr
     messages: list[MessageIn]
-    user_id: str = Field(min_length=1)
-    session_id: str = Field(min_length=1)
+    user_id: SafeStr
+    session_id: SafeStr
 
 
 class AddResponse(BaseModel):
@@ -39,9 +85,9 @@ class AddResponse(BaseModel):
 class SearchRequest(BaseModel):
     model_config = ConfigDict(extra="ignore", str_strip_whitespace=False)
 
-    query: str = Field(min_length=1)
+    query: SafeStr
     options: list[str] | None = None
-    user_id: str = Field(min_length=1)
+    user_id: SafeStr
     top_k: int = Field(ge=1, le=100_000)
 
 

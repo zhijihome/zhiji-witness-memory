@@ -10,10 +10,11 @@ Everything the evaluation sends us lands under 06_results/:
                                             request/user/session ids + digests
   * 06_results/spend/spend_state.json     — call counters over that traffic
 
-Plus WAL/SHM/journal sidecars next to each SQLite file. The container mounts
-no volumes, so `docker rm` already destroys everything; this script is the
-in-place, in-container (or checkout-local) equivalent for when the service
-must stay up or the deletion must be evidenced without killing the deployment.
+Plus WAL/SHM/journal sidecars next to each SQLite file. The deployment mounts
+a named volume at /app/06_results so redeploys never drop eval data; retiring
+the instance deletes it wholesale with `docker rm zvem && docker volume rm
+aml-eval-data`. This script is the in-place, evidenced equivalent for when
+the service must stay up.
 
 Usage:
     python competition/purge_eval_data.py [--root /app] [--dry-run]

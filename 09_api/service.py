@@ -15,6 +15,8 @@ writes — G42).
 from __future__ import annotations
 
 import threading
+import time
+from collections import OrderedDict
 from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any
@@ -26,7 +28,9 @@ from aml_retrieval import DerivedDoc, PackedItem, RetrievalEngine, SearchIndex, 
 from aml_store import AddOutcome, AddPayload, AtomicUnitRecord, CompetitionMemoryStore
 from aml_store.model import speaker_label
 
-_INDEX_CACHE_LIMIT = 64
+# Small bounded LRU: a user's packed index (BM25 postings + dense matrix +
+# anchors) can reach tens of MB on a large corpus; 8G hosts must not keep 64.
+_INDEX_CACHE_LIMIT = 8
 
 
 class MemoryService:
@@ -53,7 +57,9 @@ class MemoryService:
 
             self.governance = GovernanceEngine(config, self.store)
         self._lock = threading.RLock()
-        self._search_indexes: dict[str, SearchIndex] = {}
+        self._search_indexes: OrderedDict[str, SearchIndex] = OrderedDict()
+        self._stats_cache: dict[str, Any] = {}
+        self._stats_ts = 0.0
 
     # -- write path -----------------------------------------------------------
 
@@ -71,17 +77,28 @@ class MemoryService:
                 self.governance.ingest_atomic(payload.user_id, new_records)
             if outcome.stored:
                 si = self._search_indexes.get(payload.user_id)
+                if si is not None:
+                    self._search_indexes.move_to_end(payload.user_id)
                 if si is None:
                     si = self._build_index(payload.user_id)
                 else:
                     embedder = self.engine.index_embedder()
-                    si.extend(outcome.stored, embedder, with_postings=not self._derived_only_surface)
-                    if new_records:
-                        existing = {d.doc_id for d in si.derived_docs}
-                        si.extend_derived(
-                            self._to_docs(payload.user_id, [r for r in new_records if r.atom_id not in existing]),
-                            embedder,
-                        )
+                    try:
+                        si.extend(outcome.stored, embedder, with_postings=not self._derived_only_surface)
+                        if new_records:
+                            existing = {d.doc_id for d in si.derived_docs}
+                            si.extend_derived(
+                                self._to_docs(payload.user_id, [r for r in new_records if r.atom_id not in existing]),
+                                embedder,
+                            )
+                    except Exception:
+                        # Embed/index failure leaves an unsearchable hole in
+                        # this index (committed units without postings). Evict
+                        # so the next access rebuilds from the canonical store.
+                        self._search_indexes.pop(payload.user_id, None)
+                        raise
+            if outcome.stored:
+                self._stats_ts = 0.0  # stats counters change only on writes
             return outcome
 
     def _to_docs(self, user_id: str, records: list[AtomicUnitRecord]) -> list[DerivedDoc]:
@@ -144,6 +161,8 @@ class MemoryService:
     def search(self, user_id: str, query: str, top_k: int) -> SearchOutcome:
         with self._lock:
             si = self._search_indexes.get(user_id)
+            if si is not None:
+                self._search_indexes.move_to_end(user_id)
             if si is None or (
                 not self._derived_only_surface and len(si.ui.units) != si.processed
             ):  # defensive; should not happen
@@ -166,7 +185,13 @@ class MemoryService:
     # -- lifecycle -------------------------------------------------------------
 
     def stats(self) -> dict[str, Any]:
-        return self.store.stats()
+        # stats() does COUNT(*)/COUNT(DISTINCT) scans; /health fans this out
+        # every few seconds, so cap the scan rate (observability lags ≤30s).
+        now = time.monotonic()
+        if now - self._stats_ts > 30.0:
+            self._stats_cache = self.store.stats()
+            self._stats_ts = now
+        return self._stats_cache
 
     def close(self) -> None:
         self.store.close()

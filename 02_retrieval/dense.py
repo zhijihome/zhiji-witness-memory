@@ -21,6 +21,7 @@ import hashlib
 import math
 import os
 import sqlite3
+import threading
 import time
 from array import array
 from pathlib import Path
@@ -216,7 +217,11 @@ class DashScopeEmbedder:
             timeout=timeout,
         )
         Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
-        self._db = sqlite3.connect(str(cache_path))
+        # FastAPI sync endpoints run on an AnyIO worker pool — the embedder is
+        # lazily built on whichever thread served the first request, so the
+        # cache connection must be usable from every worker thread.
+        self._db = sqlite3.connect(str(cache_path), check_same_thread=False)
+        self._db_lock = threading.Lock()
         self._db.execute("CREATE TABLE IF NOT EXISTS emb (h BLOB PRIMARY KEY, v BLOB)")
         self._db.commit()
 
@@ -271,24 +276,26 @@ class DashScopeEmbedder:
     def embed_many(self, texts: list[str]) -> list[dict[int, float]]:
         keys = [self._key(t) for t in texts]
         vecs: list[list[float] | None] = [None] * len(texts)
-        cur = self._db.cursor()
         pending: dict[bytes, list[int]] = {}
-        for i, k in enumerate(keys):
-            row = cur.execute("SELECT v FROM emb WHERE h=?", (k,)).fetchone()
-            if row is not None:
-                vecs[i] = self._unpack(row[0])
-            else:
-                pending.setdefault(k, []).append(i)
+        with self._db_lock:
+            cur = self._db.cursor()
+            for i, k in enumerate(keys):
+                row = cur.execute("SELECT v FROM emb WHERE h=?", (k,)).fetchone()
+                if row is not None:
+                    vecs[i] = self._unpack(row[0])
+                else:
+                    pending.setdefault(k, []).append(i)
         if pending:
             miss_keys = list(pending)
             for off in range(0, len(miss_keys), self.batch_size):
                 chunk = miss_keys[off : off + self.batch_size]
                 chunk_vecs = self._fetch_batch([texts[pending[k][0]] for k in chunk])
-                self._db.executemany(
-                    "INSERT OR REPLACE INTO emb (h, v) VALUES (?, ?)",
-                    [(k, self._pack(v)) for k, v in zip(chunk, chunk_vecs)],
-                )
-                self._db.commit()
+                with self._db_lock:
+                    self._db.executemany(
+                        "INSERT OR REPLACE INTO emb (h, v) VALUES (?, ?)",
+                        [(k, self._pack(v)) for k, v in zip(chunk, chunk_vecs)],
+                    )
+                    self._db.commit()
                 for k, v in zip(chunk, chunk_vecs):
                     for i in pending[k]:
                         vecs[i] = v
@@ -343,7 +350,23 @@ class DenseRetriever:
         return self.embedder.embed(query)
 
     def score(self, index: SearchIndex, query_vec: dict[int, float]) -> dict[int, float]:
-        """Cosine similarity via the sparse inverted index (doc vectors pre-normalized)."""
+        """Cosine similarity — packed matrix matmul for dense backends, sparse
+        inverted index for hash backends (doc vectors pre-normalized either way)."""
+        matrix = getattr(index, "dense_matrix", None)
+        if matrix is not None and query_vec:
+            import numpy as np
+
+            q = np.zeros(matrix.shape[1], dtype=np.float32)
+            for b, v in query_vec.items():
+                if 0 <= b < matrix.shape[1]:
+                    q[b] = v
+            q_norm = float(np.linalg.norm(q))
+            if q_norm <= 0:
+                return {}
+            sims = matrix @ (q / q_norm)  # doc norms are 1 by construction
+            hits = np.nonzero(sims >= self.min_score)[0]
+            rows = index.dense_rows
+            return {rows[int(r)]: float(sims[r]) for r in hits}
         if not query_vec or not index.dense_postings:
             return {}
         q_norm = math.sqrt(sum(v * v for v in query_vec.values()))

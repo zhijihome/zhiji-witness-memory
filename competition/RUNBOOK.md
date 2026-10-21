@@ -18,12 +18,17 @@ Everything needed to run the exact submitted configuration.
 docker build -t zvem-a1ds -f 05_docker/Dockerfile .
 docker run -d --name zvem \
   -p 8443:8093 \
+  -v aml-eval-data:/app/06_results \
   -e AML_CONFIG_PATH=/app/10_config/competition.a1ds.json \
   -e AML_HOST=0.0.0.0 \
   -e AML_EMBEDDING_API_KEY=<key> \
   -e AML_API_KEY=<token> \
   zvem-a1ds
 ```
+
+A named volume is deliberate: an in-container `06_results/` dies with the
+writable layer, and any mid-eval rebuild would silently drop everything the
+platform already sent. With the volume, redeploys preserve eval data.
 
 Without Docker: `make setup` then
 `AML_CONFIG_PATH=10_config/competition.a1ds.json python -m aml_api.server`.
@@ -58,17 +63,16 @@ python3 smoke.py --base-url http://127.0.0.1:8093
 
 ## 6. Eval-data deletion (Cycle-2 rule: within 30 days post-run)
 
-All eval data lives in two files under the app root — `06_results/aml.db`
-(raw units + derived docs + journal) and `06_results/embedding_cache/
-dashscope.sqlite` (content-keyed embedding cache) — plus their WAL/SHM
-sidecars. The image mounts no volumes, so removing the container destroys
-everything; for an in-place, evidenced wipe while the service stays up:
+All eval data lives under `06_results/` in the named volume `aml-eval-data`:
+`aml.db` (raw units + derived docs + journal), `embedding_cache/
+dashscope.sqlite`, `ops/ops.jsonl`, `spend/spend_state.json`, plus WAL/SHM
+sidecars. Deletion paths:
 
 ```bash
 docker exec zvem python /app/competition/purge_eval_data.py            # live wipe
 docker exec zvem python /app/competition/purge_eval_data.py --dry-run  # preview only
 # or the nuclear option, if the instance is being retired anyway:
-docker rm -f zvem   # writable layer gone => all eval data gone
+docker rm -f zvem && docker volume rm aml-eval-data
 ```
 
 A purge run should be logged (timestamp + output) as the deletion evidence.

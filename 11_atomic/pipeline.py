@@ -25,7 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from aml_config.config import AMLConfig, canonical_endpoint_identity
 from aml_store import AtomicUnitRecord, MemoryUnit
-from aml_store.model import atomic_unit_id
+from aml_store.model import atomic_unit_id, speaker_label
 
 from .cache import ExtractionCache, cache_key
 from .extractors import LLMExtractor, RuleBasedExtractor, finalize_facts, prompt_version
@@ -38,8 +38,10 @@ if TYPE_CHECKING:  # pragma: no cover
 
 def _fact_text(role: str, fact: str) -> str:
     """Speaker-bound derived text — the same "role: content" form raw units
-    are indexed with, so lexical/semantic signals stay uniform."""
-    return f"{role}: {fact}"
+    are indexed with, so lexical/semantic signals stay uniform. Generic chat
+    roles carry no identity, so they bind nothing."""
+    label = speaker_label(role)
+    return f"{label}: {fact}" if label else fact
 
 
 class AtomicPipeline:

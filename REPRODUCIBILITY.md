@@ -55,5 +55,8 @@ building against huggingface.co directly.
 
 - DashScope embedding responses (remote API; the SQLite cache in
   `06_results/embedding_cache/` makes repeat runs deterministic on the same
-  text, but the cache is runtime state, not shipped).
+  text, but the cache is runtime state, not shipped). **Disclosure:** memory
+  and query text is sent to this third-party endpoint (Alibaba Cloud
+  DashScope) for embedding only — no generative call, and our 30-day purge
+  covers our side; the provider's own data policy applies to their side.
 - `MANIFEST.json` `generated_at` timestamp.

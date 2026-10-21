@@ -167,7 +167,6 @@ def create_app(config: AMLConfig | None = None, service: MemoryService | None = 
     def add(request: Request, payload: AddRequest) -> JSONResponse:
         denied = _auth_fail(request)
         if denied is not None:
-            journal.record({"op": "add", "status": 401, "latency_ms": 0, "user_id": payload.user_id})
             return denied
         started = time.perf_counter()
         try:
@@ -222,9 +221,6 @@ def create_app(config: AMLConfig | None = None, service: MemoryService | None = 
     def search(request: Request, payload: SearchRequest) -> JSONResponse:
         denied = _auth_fail(request)
         if denied is not None:
-            journal.record(
-                {"op": "search", "status": 401, "latency_ms": 0, "user_id": payload.user_id}
-            )
             return denied
         started = time.perf_counter()
         try:

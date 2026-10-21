@@ -25,6 +25,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+import numpy as np
+
 from aml_config.config import ConfigError
 from aml_store.model import MemoryUnit, speaker_label
 from aml_store.store import UserIndex
@@ -148,6 +150,9 @@ class SearchIndex:
         "doc_len",
         "total_len",
         "dense_postings",
+        "dense_matrix",
+        "dense_rows",
+        "dense_dim",
         "anchors",
         "temporal_enabled",
         "stemming",
@@ -169,6 +174,13 @@ class SearchIndex:
         self.doc_len: dict[int, int] = {}
         self.total_len = 0
         self.dense_postings: dict[int, list[tuple[int, float]]] = {}
+        # Dense-vector storage: real embedding backends produce ~1K-dim dense
+        # vectors; storing them as (bucket, val) tuples costs ~160KB/doc and
+        # scores via Python loops. A packed float32 matrix costs 4KB/doc and
+        # scores via matmul. Sparse-hash backends (dim >> 8192) keep postings.
+        self.dense_matrix: Any | None = None  # np.ndarray (n_vecs, dense_dim)
+        self.dense_rows: list[int] = []  # matrix row -> doc idx
+        self.dense_dim: int | None = None  # None = postings mode
         self.anchors: dict[int, list[TimeAnchor]] = {}
         self.temporal_enabled = temporal_enabled
         self.stemming = stemming
@@ -203,6 +215,7 @@ class SearchIndex:
             # EXP-EMB-V4: batch-warm an API backend's cache; the per-unit
             # `embed` below then hits cache and posting order is unchanged.
             embed_many([_index_text(unit) for unit in units])
+        dense_pairs: list[tuple[int, dict[int, float]]] = []
         for unit in units:
             if unit.user_id != self.ui.user_id:
                 raise ValueError("cross-user extend blocked")
@@ -229,8 +242,7 @@ class SearchIndex:
 
             if embedder is not None:
                 vec = embed_content_for_index(embedder, unit.role, unit.content)
-                for bucket, val in vec.items():
-                    self.dense_postings.setdefault(bucket, []).append((idx, val))
+                dense_pairs.append((idx, vec))
 
             if self.temporal_enabled:
                 unit_anchors = extract_anchors(unit.content, unit.ts_ms)
@@ -241,6 +253,37 @@ class SearchIndex:
                 self.anchors[idx] = []
 
             self._processed = idx + 1
+        self._append_dense(dense_pairs, embedder)
+
+    def _resolve_dense_dim(self, embedder: Any) -> int | None:
+        """Dense backends expose a bounded `dimensions`/`dim` (<=8192) → matrix
+        storage. Sparse-hash backends (dim=65536) → postings storage."""
+        if self.dense_dim is not None:
+            return self.dense_dim if self.dense_dim > 0 else None
+        dim = getattr(embedder, "dimensions", None) or getattr(embedder, "dim", None)
+        try:
+            dim = int(dim) if dim is not None else 0
+        except (TypeError, ValueError):
+            dim = 0
+        self.dense_dim = dim if 0 < dim <= 8192 else -1
+        return self.dense_dim if self.dense_dim > 0 else None
+
+    def _append_dense(self, pairs: list[tuple[int, dict[int, float]]], embedder: Any) -> None:
+        if not pairs:
+            return
+        dim = self._resolve_dense_dim(embedder)
+        if dim is None:
+            for idx, vec in pairs:
+                for bucket, val in vec.items():
+                    self.dense_postings.setdefault(bucket, []).append((idx, val))
+            return
+        rows = np.zeros((len(pairs), dim), dtype=np.float32)
+        for r, (_, vec) in enumerate(pairs):
+            for b, v in vec.items():
+                if 0 <= b < dim:
+                    rows[r, b] = v
+        self.dense_matrix = rows if self.dense_matrix is None else np.vstack((self.dense_matrix, rows))
+        self.dense_rows.extend(idx for idx, _ in pairs)
 
     def extend_derived(self, docs: list[DerivedDoc], embedder: Any) -> None:
         """Append derived (atomic) docs to the SAME postings pool: BM25 corpus
@@ -250,6 +293,7 @@ class SearchIndex:
         embed_many = getattr(embedder, "embed_many", None)
         if embedder is not None and embed_many is not None:
             embed_many([doc.text for doc in docs])
+        dense_pairs: list[tuple[int, dict[int, float]]] = []
         for doc in docs:
             idx = DERIVED_BASE + len(self.derived_docs)
             self.derived_docs.append(doc)
@@ -264,8 +308,7 @@ class SearchIndex:
 
             if embedder is not None:
                 vec = embedder.embed(doc.text)  # speaker already bound in the fact text
-                for bucket, val in vec.items():
-                    self.dense_postings.setdefault(bucket, []).append((idx, val))
+                dense_pairs.append((idx, vec))
 
             if self.temporal_enabled:
                 doc_anchors = extract_anchors(doc.text, doc.ts_ms)
@@ -276,6 +319,7 @@ class SearchIndex:
                 self.anchors[idx] = []
 
             self.derived_by_source.setdefault(doc.source_idx, []).append(idx)
+        self._append_dense(dense_pairs, embedder)
 
     @classmethod
     def build(

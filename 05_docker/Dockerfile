@@ -1,5 +1,5 @@
 # zhiji-aml V0.5 service image — reproducible build from the lockfile.
-FROM python:3.14-slim
+FROM python:3.14-slim@sha256:fbecd461fc72d21b2143c6eaba25143738079154a6d0ea3da3aec724f50eed4a
 
 WORKDIR /app
 
@@ -31,8 +31,9 @@ ENV HF_HUB_DISABLE_XET=1
 RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('sentence-transformers/all-MiniLM-L6-v2', revision='1110a243fdf4706b3f48f1d95db1a4f5529b4d41')"
 
 # Bake the ce_rrf reranker model used by the A1-DS competition candidate so the
-# frozen image never needs network on first search either.
-RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('cross-encoder/ms-marco-MiniLM-L-6-v2')"
+# frozen image never needs network on first search either. Revision pinned —
+# an unpinned snapshot follows upstream moves and silently changes scoring.
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download('cross-encoder/ms-marco-MiniLM-L-6-v2', revision='233902d25c440f23af6f7d6e94d2946bac0bee0a')"
 
 # application code
 COPY pyproject.toml README.md ./
