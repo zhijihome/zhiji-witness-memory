@@ -178,7 +178,7 @@ def assert_secret_free(text: str) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", default="10_config/competition.a1kr.json")
+    parser.add_argument("--config", default="10_config/competition.a1ds.json")
     parser.add_argument("--out", default=None, help="write JSON here (default: stdout)")
     parser.add_argument("--generated-at", default=None)
     parser.add_argument("--docker-digest", default=None)

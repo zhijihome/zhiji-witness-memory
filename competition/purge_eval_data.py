@@ -1,16 +1,19 @@
 """Cycle-2 eval-data purge (rules: "delete within 30 days after the run").
 
-Every byte the evaluation sends us lives in two files under the app root:
+Everything the evaluation sends us lands under 06_results/:
 
   * 06_results/aml.db                     — raw units, atomic derived docs,
                                             governance journal (all eval content)
   * 06_results/embedding_cache/dashscope.sqlite
                                           — content-keyed embedding cache
+  * 06_results/ops/ops.jsonl              — request journal: eval-supplied
+                                            request/user/session ids + digests
+  * 06_results/spend/spend_state.json     — call counters over that traffic
 
-Plus WAL/SHM sidecars next to each. The container mounts no volumes, so
-`docker rm` already destroys everything; this script is the in-place,
-in-container (or checkout-local) equivalent for when the service must stay up
-or the deletion must be evidenced without killing the deployment.
+Plus WAL/SHM/journal sidecars next to each SQLite file. The container mounts
+no volumes, so `docker rm` already destroys everything; this script is the
+in-place, in-container (or checkout-local) equivalent for when the service
+must stay up or the deletion must be evidenced without killing the deployment.
 
 Usage:
     python competition/purge_eval_data.py [--root /app] [--dry-run]
@@ -26,6 +29,7 @@ from pathlib import Path
 EVAL_DATA_FILES = (
     "06_results/aml.db",
     "06_results/embedding_cache/dashscope.sqlite",
+    "06_results/ops/ops.jsonl",
     "06_results/spend/spend_state.json",
 )
 _SIDECAR_SUFFIXES = ("-wal", "-shm", "-journal")

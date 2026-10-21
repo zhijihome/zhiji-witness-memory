@@ -10,7 +10,7 @@
   "configured_model": "gpt-4o-mini",
   "dataset_contract_version": "UNKNOWN",
   "dependency_lock_hash": "sha256:8cc0390f68a69fa56766709bfeef7f378da261a3dc61ac15e82e7ced9ce44205",
-  "docker_digest_if_available": "sha256:4e8ce54df8fc1d75b9ad6f8883669b0b57379edacff289c22854971e0f11c2fa",
+  "docker_digest_if_available": "sha256:af90772b11228bcbb6bcfc3e8fd7a87610e0a2fd3ef130039284a65d97c3b38a",
   "endpoint_identity": "api.openai.com",
   "environment_summary": {
     "dense_backend": "dashscope",
@@ -19,9 +19,9 @@
     "platform": "macOS-27.0.1-arm64-arm-64bit",
     "python": "3.12.15"
   },
-  "generated_at": "2026-10-21T16:17:08+00:00",
+  "generated_at": "2026-10-21T16:24:41+00:00",
   "git_dirty": false,
-  "git_sha": "455f9e3cb272cb11f5c36d8b41d2f6d387a56a3a",
+  "git_sha": "00144b8f7393b04ccf7f0c8e47fc430651b85c67",
   "official_rule_snapshot_id": "AML_CYCLE2_RULE_FREEZE_R2_20260921",
   "prompt_version": "atomic-extract-rule-v1-fine",
   "requested_model": "gpt-4o-mini",

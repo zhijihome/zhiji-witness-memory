@@ -11,3 +11,12 @@ __pycache__
 ._*
 .DS_Store
 competition/MANIFEST.json
+.env
+.env.*
+*.pem
+*.key
+06_results/embedding_cache/
+06_results/spend/
+06_results/atomic_cache/
+06_results/ledger/
+06_results/experiments/
