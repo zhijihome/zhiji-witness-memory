@@ -121,3 +121,77 @@ def test_index_hole_self_heals_after_embed_failure(tmp_config):
         assert any("herons" in i.content for i in hits), [i.content for i in hits]
     finally:
         svc.close()
+
+
+# --- lenient-ingest edges (audit O5 + judge re-check) -------------------------
+
+
+def test_ts_ms_never_500s_on_pathological_values(tmp_config):
+    """inf / 1e999 / microsecond-confused / negative timestamps must not crash:
+    schema degrades them to None instead of raising OverflowError out of
+    pydantic (-> 500) or overflowing datetime at store insert (-> 500)."""
+    from aml_api.service import MemoryService
+    from aml_api.schemas import AddRequest
+    from aml_store import AddPayload
+
+    cfg = tmp_config({"dense": {"backend": "hashed_ngram"}})
+    svc = MemoryService(cfg)
+    pathological = [float("inf"), float("-inf"), 1e999, -1e999, 1_760_000_000_000_000_000, -5, 253_402_300_800_000]
+    for i, ts in enumerate(pathological):
+        req = AddRequest.model_validate({
+            "request_id": f"r{i}", "user_id": "u", "session_id": "s",
+            "messages": [{"role": "user", "content": f"fact {i} about cats", "timestamp": ts}],
+        })
+        out = svc.add(AddPayload(request_id=req.request_id, user_id=req.user_id,
+                                 session_id=req.session_id,
+                                 messages=[__import__("aml_store", fromlist=["MessageIn"]).MessageIn(
+                                     role=m.role, content=m.content, timestamp=m.timestamp)
+                                     for m in req.messages]))
+        assert out.stored, f"ts={ts!r} must still store"
+    hits = svc.search("u", "cats", 20).items
+    assert len(hits) >= len(pathological)
+    svc.close()
+
+
+def test_empty_content_dropped_before_store(tmp_config):
+    """Empty/whitespace content is schema-accepted but must never be stored —
+    neighbor expansion would otherwise surface content:'' in responses (G15)."""
+    from aml_api.service import MemoryService
+    from aml_api.schemas import AddRequest
+    from aml_store import AddPayload, MessageIn
+
+    cfg = tmp_config({"dense": {"backend": "hashed_ngram"}})
+    svc = MemoryService(cfg)
+    req = AddRequest.model_validate({
+        "request_id": "r", "user_id": "u", "session_id": "s",
+        "messages": [
+            {"role": "user", "content": ""},
+            {"role": "user", "content": "   "},
+            {"role": "user", "content": "real fact about dogs"},
+        ],
+    })
+    out = svc.add(AddPayload(request_id=req.request_id, user_id=req.user_id,
+                             session_id=req.session_id,
+                             messages=[MessageIn(role=m.role, content=m.content, timestamp=m.timestamp)
+                                       for m in req.messages]))
+    assert len(out.stored) == 1  # only the real unit
+    hits = svc.search("u", "dogs", 10).items
+    assert all(i.content.strip() for i in hits), [i.content for i in hits]
+    svc.close()
+
+
+def test_min_score_config_validation():
+    """min_score<=0 would diverge matrix vs postings hit-sets — config rejects."""
+    import json
+    import tempfile
+    from pathlib import Path
+
+    from aml_config.config import ConfigError, load_config
+
+    with tempfile.TemporaryDirectory() as td:
+        bad = Path(td) / "bad.json"
+        base = json.loads(Path("10_config/defaults.json").read_text())
+        base["dense"]["min_score"] = 0
+        bad.write_text(json.dumps(base))
+        with pytest.raises((ConfigError, Exception)):
+            load_config(path=str(bad))

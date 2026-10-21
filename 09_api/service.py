@@ -64,8 +64,18 @@ class MemoryService:
     # -- write path -----------------------------------------------------------
 
     def add(self, payload: AddPayload) -> AddOutcome:
+        # Lenient-ingest edge: empty/whitespace content is schema-accepted but
+        # carries no retrievable value — and neighbor expansion would surface
+        # it as content:"" in responses (G15). Drop empties before commit.
+        kept = [m for m in payload.messages if m.content.strip()]
+        if len(kept) != len(payload.messages):
+            payload = replace(payload, messages=kept)
         with self._lock:
             outcome = self.store.add(payload)  # raw commit (INV5); raw is canonical, never mutated
+            if outcome.stored:
+                # stats counters change on any commit — invalidate before the
+                # index work so a later extend failure can't leave stale stats.
+                self._stats_ts = 0.0
             new_records: list[AtomicUnitRecord] = []
             if outcome.stored and self.pipeline is not None:
                 new_records = self.pipeline.extract_and_store(outcome.stored)  # derived layer only (G37)
@@ -97,8 +107,6 @@ class MemoryService:
                         # so the next access rebuilds from the canonical store.
                         self._search_indexes.pop(payload.user_id, None)
                         raise
-            if outcome.stored:
-                self._stats_ts = 0.0  # stats counters change only on writes
             return outcome
 
     def _to_docs(self, user_id: str, records: list[AtomicUnitRecord]) -> list[DerivedDoc]:
@@ -138,6 +146,7 @@ class MemoryService:
                 # self-heal (crash between raw commit and extraction); with the
                 # extraction cache this is free for LLM arms
                 self.pipeline.extract_and_store(pending)
+                self._stats_ts = 0.0  # derived write — atomic_units changed
             derived_docs = self._to_docs(user_id, self.store.atomic_units(user_id))
         si = self.engine.build_index(ui, self.engine.index_embedder(), derived_docs)
         if self.governance is not None:
@@ -167,6 +176,9 @@ class MemoryService:
                 not self._derived_only_surface and len(si.ui.units) != si.processed
             ):  # defensive; should not happen
                 si = self._build_index(user_id)
+            # schema allows large top_k; the CE pool would then score all of
+            # them under scope=both — enforce the configured ceiling here.
+            top_k = min(top_k, int(self.engine.config.search_cfg.get("max_top_k", 1000)))
             outcome = self.engine.search(si, query, top_k)
             date_on = self.engine.config.search_cfg.get("date_prefix")
             speaker_on = self.engine.config.search_cfg.get("speaker_prefix")

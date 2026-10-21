@@ -344,6 +344,14 @@ def validate(raw: dict[str, Any]) -> None:
         raise ConfigError("dense.backend must be hashed_ngram, sentence_transformers or dashscope")
     if str(dense.get("device", "auto")) not in ("auto", "cpu", "mps", "cuda"):
         raise ConfigError("dense.device must be one of auto|cpu|mps|cuda")
+    try:
+        ms = float(dense.get("min_score", 0.05))
+    except (TypeError, ValueError):
+        raise ConfigError(f"dense.min_score must be numeric, got {dense.get('min_score')!r}") from None
+    if not (0 < ms <= 1):
+        # <=0 diverges matrix vs postings hit-sets (matrix returns every row);
+        # >1 can never match a cosine score.
+        raise ConfigError("dense.min_score must be in (0, 1]")
     fusion = raw.get("fusion", {})
     if fusion.get("method") not in ("rrf", "norm_sum"):
         raise ConfigError("fusion.method must be 'rrf' or 'norm_sum'")

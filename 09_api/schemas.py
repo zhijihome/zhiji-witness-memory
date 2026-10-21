@@ -25,27 +25,37 @@ def _to_str(v: Any) -> Any:
     return v
 
 
+_TS_MS_MAX = int(datetime(9999, 12, 30, tzinfo=UTC).timestamp() * 1000)
+
+
+def _bound_ts(ts: int) -> int | None:
+    return ts if 0 <= ts <= _TS_MS_MAX else None
+
+
 def _to_ts_ms(v: Any) -> Any:
     """Coerce tolerable timestamp shapes to epoch-ms; unparseable → None.
 
-    Accepted: int/float epoch-ms, numeric strings, ISO-8601 strings. Garbage
-    degrades to "no timestamp" (date prefix + time anchors off) rather than
-    rejecting the whole Add chunk."""
+    Accepted: int/float epoch-ms, numeric strings, ISO-8601 strings. Garbage —
+    including non-finite numbers (inf/1e999) and values that overflow
+    datetime (e.g. microsecond-confused ~1e15+) — degrades to "no timestamp"
+    rather than rejecting the whole Add chunk or crashing downstream."""
     if v is None or isinstance(v, bool):
         return None
     if isinstance(v, (int, float)):
-        ts = int(v)
-        return ts if ts >= 0 else None
+        try:
+            ts = int(v)
+        except (ValueError, OverflowError):
+            return None
+        return _bound_ts(ts)
     if isinstance(v, str):
         s = v.strip()
         try:
-            ts = int(float(s))
-            return ts if ts >= 0 else None
-        except ValueError:
+            return _bound_ts(int(float(s)))
+        except (ValueError, OverflowError):
             pass
         try:
-            return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000)
-        except ValueError:
+            return _bound_ts(int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp() * 1000))
+        except (ValueError, OverflowError):
             return None
     return None
 
