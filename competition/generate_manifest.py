@@ -156,6 +156,9 @@ def build_manifest(
         # model identity: CONFIGURED / REQUESTED are the same frozen literal
         # by construction and by the adapter's pre-call gate; UPSTREAM is
         # unknown until a real official call happens (zero calls this round).
+        # These describe the DORMANT adapter config — under tier=NO_LLM no
+        # generative call is ever made, so declare that fact first-class.
+        "generative_model_calls": "none" if str(adapter.get("tier")) == "NO_LLM" else "adapter",
         "configured_model": model_id,
         "requested_model": model_id,
         "upstream_reported_model": "UNKNOWN_NOT_OBSERVED",
@@ -164,7 +167,7 @@ def build_manifest(
         "cache_namespace": cache_namespace(model_id, granularity, endpoint_identity),
         "dependency_lock_hash": "sha256:" + sha256_file(lock_path),
         "docker_digest_if_available": docker_digest or "NOT_BUILT",
-        "dataset_contract_version": "UNKNOWN",  # official snapshot does not version the dataset bundle
+        "dataset_contract_version": "UNVERSIONED_BY_AML_CYCLE2_R2",  # the R2 snapshot ships no dataset version field
         "seed_if_any": 0,  # adapter body: temperature 0 + seed 0 on every official call
         # image pins always come from the Dockerfile — also when runtime facts
         # are injected via --environment-json — so they cannot be hand-typed.
