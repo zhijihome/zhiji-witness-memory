@@ -27,7 +27,8 @@ clean checkout.
   `[YYYY-MM-DD] <speaker>: <verbatim content>` when — and only when — the
   source record actually carries that timestamp/speaker. Missing metadata is
   never invented (the database insertion time is never substituted as a
-  source date).
+  source date). Under the official generic-role payload (`user`/`assistant`)
+  no speaker is rendered — verified, not assumed; see TECHNICAL_REPORT §3.1.
 - **Provenance through the pipeline.** Atomic derived documents inherit the
   timestamp and speaker of the source message they were extracted from, so
   every returned item can honestly say where and when it came from.
@@ -35,6 +36,16 @@ clean checkout.
   code SHA, config fingerprint, dependency-lock hash, model identity, and
   Docker digest; the manifest generator refuses to emit credential-shaped
   content.
+
+## Provenance (frozen candidate `a1ds-r8`)
+
+| artifact | value |
+|---|---|
+| source SHA (development tree) | `ff86223` |
+| export SHA (this repo) | see tag `a1ds-r8` |
+| image digest (`aml-a1ds:r8`) | `sha256:4bd8d5023cfffa0a3a25c24568c01a4ecf42ecdedef4ab592f344139e4a97cbb` |
+| competition config hash | `sha256:bfb338dd2fb0a39563a9bba81c6da3d6a8f1e821cd2b86adb21e35e52515e7dc` |
+| rule snapshot | `AML_CYCLE2_RULE_FREEZE_R2_20260921` |
 
 ## Quickstart (Docker, one command)
 

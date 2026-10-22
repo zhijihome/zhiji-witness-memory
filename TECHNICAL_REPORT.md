@@ -76,7 +76,8 @@ with the switches off.
 
 The candidate was chosen by controlled ablation, not intuition. On a frozen
 346-question local proxy set (public LOCOMO-style data, same answer model
-class at temperature 0, identical scoring):
+class at temperature 0, identical scoring, **local harness `role` field
+carrying real speaker names**):
 
 | variant | overall F1 | notes |
 |---|---|---|
@@ -97,6 +98,43 @@ baseline (weekday is the worked example).
 **These are local proxy figures, not official leaderboard results.** They
 measure relative ordering of our own variants under a fixed harness; they
 cannot be compared to other submissions' numbers.
+
+### 3.1 Verification under the official payload shape
+
+The table above was produced with the local harness putting real speaker
+names in `role`. The official contract fixes `role` to `user`/`assistant`,
+so `speaker_label()` returns `None` and the speaker prefix renders nothing —
+we verified this end-to-end, it is not an assumption. Re-running the full
+1986-question set with `role` forced to `user`/`assistant` (same code,
+deterministic extractive surrogate answerer `fixed-extractive-v1`):
+
+| variant | payload shape | overall | evidence recall@10 | recall@100 |
+|---|---|---|---|---|
+| A1 baseline | official | 0.0431 | 0.493 | 0.803 |
+| + `date_prefix` | official | 0.0794 | 0.493 | 0.803 |
+| A1-DS (date+speaker) | official | 0.0794 | 0.493 | 0.803 |
+| A1-DS (date+speaker) | named `role` | 0.0839 | 0.723 | 0.918 |
+
+Read-out, stated plainly:
+
+- **`speaker_prefix` is exactly inert under official-shaped payloads** —
+  A1-DS ≡ A1+date bit-for-bit, by design (the guard fabricates no speaker).
+- `date_prefix` still contributes **+3.6pt** under official shape — the
+  date channel survives because real `timestamp` metadata exists.
+- Named-vs-generic roles cost only **−0.45pt overall** on this protocol
+  (0.0839→0.0794), but evidence recall@100 drops **0.918→0.803**: names in
+  the index text genuinely aid retrieval, the surrogate answerer just
+  barely capitalizes on them.
+- Absolute numbers on this protocol are *floored by the answerer*: a
+  deterministic extractive stub cannot recover speaker identity from names
+  inside `content` the way a generative answerer can. Treat them as
+  variant-ordering evidence, not score predictions. First Smoke will read
+  the actual `role` distribution from the official payloads; if names
+  arrive inside `content` instead, the retrieval-side penalty partly
+  returns.
+
+The earlier 0.4298 figure should be read as **the upper bound when speaker
+metadata is real** — not the expectation under the official contract.
 
 ## 4. Compliance posture
 

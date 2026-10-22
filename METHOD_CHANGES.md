@@ -29,8 +29,8 @@ projection. Every change relative to the source method is listed:
 | C1 | Lifecycle organs removed (night cycle, dream, initiative gate, continuity ledger, physiology pipeline) | The AML contract exercises only Add/Search; lifecycle features have no observable channel and add unverifiable state |
 | C2 | Memory model converged to verbatim units + rule-based atomic derived docs | Determinism + reproducibility; no generative dependency |
 | C3 | Retrieval = BM25 + dense(v4) + local cross-encoder, RRF k=60, relevance-desc | Measured best on controlled ablation; cheaper than deep rerankers (A2 retired after losing +8.8pt on matched set) |
-| C4 | **Display-layer `[YYYY-MM-DD]` prefix** when source timestamp exists | +5.3pt local F1; delivers date through the only guaranteed channel (`content`) |
-| C5 | **Display-layer `<speaker>:` prefix** when source speaker exists | +8.0pt local F1; cat-5 refusal +26.7pt |
+| C4 | **Display-layer `[YYYY-MM-DD]` prefix** when source timestamp exists | +5.3pt local F1 (named-role proxy); **+3.6pt verified under official `role=user/assistant` payload shape** |
+| C5 | **Display-layer `<speaker>:` prefix** when source speaker exists | +8.0pt local F1 / cat-5 +26.7pt **under named-role payloads only**; provably inert under the official generic-role contract — retained because it costs nothing and activates iff speaker metadata is real |
 | C6 | Provenance extension: derived docs inherit source `ts_ms` + speaker | Required for C4/C5 to be honest rather than fabricated |
 | C7 | Missing-source-timestamp units render **no** date (never insertion time) | Prevents fabricated provenance (caught in review) |
 | C8 | Dense backend `dashscope` (text-embedding-v4) added, with SQLite vector cache, retry/backoff, fail-loud | Academic-track requirement; local MiniLM retained for offline/dev |

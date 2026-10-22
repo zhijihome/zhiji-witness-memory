@@ -1,6 +1,6 @@
 """Public-endpoint load probe — measures what the official harness will see.
 
-Runs against https://aml.zhijihome.xyz:8443 with AML_API_KEY auth. Sends Add
+Runs against $AML_BASE with AML_API_KEY auth. Sends Add
 batches shaped like the official contract (role=user/assistant, optional
 timestamp), then Search latency probes. Synthetic content only — this is a
 perf probe, not an eval.
@@ -20,7 +20,7 @@ import time
 import urllib.request
 from pathlib import Path
 
-BASE = os.environ.get("AML_BASE", "https://aml.zhijihome.xyz:8443")
+BASE = os.environ.get("AML_BASE")  # required — the eval endpoint is not shipped in-repo
 
 _LOREM = (
     "hiking trip to the mountains last weekend was exhausting but the view from "
@@ -75,6 +75,8 @@ def main() -> int:
                     break
     if not key:
         sys.exit("AML_API_KEY not set and no .env found")
+    if not BASE:
+        sys.exit("AML_BASE not set — pass the target endpoint explicitly")
     rng = random.Random(7)
     uid = f"loadtest-{int(time.time())}"
 
