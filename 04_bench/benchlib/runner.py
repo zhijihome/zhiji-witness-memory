@@ -114,6 +114,7 @@ def run_benchmark(
     limit_questions: int | None = None,
     commit: str | None = None,
     write_ledger: bool = True,
+    generic_roles: bool = False,
 ) -> dict[str, Any]:
     surface = config.surface
     results_root = Path(results_root)
@@ -234,6 +235,15 @@ def run_benchmark(
             user_id = f"bench:{run_id}:c{conv_i}"
             unit_dia: dict[str, str] = {}
             next_unit = 1
+            # Official-payload shape: role carries generic chat roles, not the
+            # participant name. Map each distinct speaker to a stable generic
+            # role per conversation (first seen → user, second → assistant).
+            role_map: dict[str, str] = {}
+
+            def _role(speaker: str) -> str:
+                if speaker not in role_map:
+                    role_map[speaker] = "user" if len(role_map) % 2 == 0 else "assistant"
+                return role_map[speaker]
 
             for sess_j, turns in enumerate(conv.sessions):
                 for chunk_start in range(0, len(turns), chunk_size):
@@ -241,7 +251,12 @@ def run_benchmark(
                     payload = {
                         "request_id": f"bench:{run_id}:c{conv_i}:s{sess_j}:k{chunk_start // chunk_size}",
                         "messages": [
-                            {"role": t.speaker, "content": t.text, "timestamp": t.ts_ms} for t in chunk
+                            {
+                                "role": _role(t.speaker) if generic_roles else t.speaker,
+                                "content": t.text,
+                                "timestamp": t.ts_ms,
+                            }
+                            for t in chunk
                         ],
                         "user_id": user_id,
                         "session_id": f"bench:{run_id}:c{conv_i}:s{sess_j}",

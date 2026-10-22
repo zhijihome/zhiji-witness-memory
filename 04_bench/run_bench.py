@@ -38,6 +38,8 @@ def main() -> int:
     parser.add_argument("--label", default="")
     parser.add_argument("--limit-convs", type=int, default=None)
     parser.add_argument("--limit-questions", type=int, default=None)
+    parser.add_argument("--generic-roles", action="store_true",
+                        help="send role=user/assistant like the official contract instead of speaker names")
     parser.add_argument("--top-k", type=int, default=100)
     parser.add_argument("--set", dest="sets", action="append", default=[], help="dotted.path=value override")
     args = parser.parse_args()
@@ -71,6 +73,7 @@ def main() -> int:
                 label=args.label,
                 top_k=args.top_k,
                 limit_questions=args.limit_questions,
+                generic_roles=args.generic_roles,
             )
         except ConfigMismatchError as exc:
             print(str(exc), file=sys.stderr)
